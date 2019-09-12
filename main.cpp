@@ -5,20 +5,20 @@
 #include <sstream>
 
 // 24文字 ＋ 36文字（vmovdqa を利用するため、32バイトアライメントが必要）
-//static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
-//	= "dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
+	= "dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	//	b3 7a 4f 2c  c0 62 4f 16  90 f6 46 06  cf 38 59 45  b2 be c4 ea
 
 //static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
 //	= "E4WSEcseoWr4csPLS2QJHA==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	// ed e4 02 86  00 ad 40 c9  d5 20 b7 9f  24 03 ba 74  ae 49 c0 f7 
 
-static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
-	= "zYuFKiL/3y3UA63cCi8V6g==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+//static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
+//	= "zYuFKiL/3y3UA63cCi8V6g==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	// 7f 8b ce b1  ca 9f ab b2  fa ab 7a f2  79 89 4a 73  db f6 98 e5
 
 
-extern "C" void sha1_update_intel(uint32_t* o_pHash, const char* i_pbuf_to24chr);
+extern "C" void sha1_update_intel(uint8_t* o_pbase64, const char* i_pbuf_to24chr);
 //extern "C" void  sha1_update_intel(uint32_t* o_pHash, const char* i_pBuffer, uint8_t* o_pW_asm);
 
 extern "C" void  sha1_init_once();
@@ -128,8 +128,8 @@ void  G_out_char_60(const char* psrc)
 int main()
 {
   //  uint32_t  hash[5] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
-    uint32_t  hash[5];
-	memset(hash, 0, sizeof(hash));
+    uint8_t __attribute__ ((aligned (16))) base64[32];
+	memset(base64, 0, sizeof(base64));
 
 	// アセンブラ内での W情報
 	uint8_t __attribute__ ((aligned (32))) W_asm[320];
@@ -145,14 +145,14 @@ int main()
 	// アセンブラルーチン呼び出し
 	sha1_init_once();
 //	sha1_update_intel(hash, (char*)sa_WS_Key, W_asm);
-	sha1_update_intel(hash, sa_WS_Key_24chr);
+	sha1_update_intel(base64, sa_WS_Key_24chr);
 
 
 	// ----------------------------------------
 	// hash値のダンプ
 	std::cout << std::endl;
-	std::cout << "ハッシュ値 ダンプ" << std::endl;
-	G_out_ui32_5(hash);
+	std::cout << "base64 ダンプ" << std::endl;
+	G_out_ui8_32(base64);
 
 
 	// ----------------------------------------

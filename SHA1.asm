@@ -268,25 +268,29 @@ section .data align=16
 	%xdefine K3 0x8f1bbcdc
 	%xdefine K4 0xca62c1d6
 
-K_XMM_ARY:
+K_XMM_ARY:				; 64 bytes
 	DD K1, K1, K1, K1
 	DD K2, K2, K2, K2
 	DD K3, K3, K3, K3
 	DD K4, K4, K4, K4
 
-bswap_shufb_ctl:
+bswap_shufb_ctl:		; 16bytes
 	DD 0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f
-
-SHA1_INIT_ONCE_W16_19:
-	DD 0, 0, 0, 0x1e0	; 0x1e0 = 480(bits)
 
 DB_WS_KEY_BUF:			; 64bytes
 	DB "1234567890123456789012==258EAFA5-E914-47DA-95CA-C5AB0DC85B11", 0x80, 0, 0, 0
+
+DQ_PSHUFB_base64:		; 16bytes
+	DB  'a'-26, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52
+	DB  '0'-52, '0'-52, '0'-52, '+'-62, '/'-63, 'A', 0, 0
+
 
 ; ========================================================
 section .bss align=32	; vmovdqa を利用するため
 
 	WK_VAL_BLK2  resb  320
+
+	RET_BASE64  resb  32
 
 ; ========================================================
 section .text align=4096
@@ -421,7 +425,7 @@ POS_CRT_WK_VAL:
 
 
 	; ハッシュ初期値
-	mov		A, 0x67452301
+	mov		A, 0x67452301		; 上位 32bit が、mov命令によりクリアされる
 	mov		B, 0xEFCDAB89
 	mov		C, 0x98BADCFE
 	mov		D, 0x10325476
@@ -541,25 +545,74 @@ POS_RR_START:
 
 
 POS_FINISH_2nd_BLK:
+; -----------------------------------------
+; ハッシュ値 20 bytes を base64 エンコードする
 	pop		rax
-	add		eax, A
-	mov		[HASH_PTR   ], eax
+	add		A, eax		; A = ecx
+
+	mov		[HASH_PTR], A
 
 	pop		rax
-	add		eax, B
-	mov		[HASH_PTR+ 4], eax
+	add		B, eax		; B = esi
 
 	pop		rax
-	add		eax, C
-	mov		[HASH_PTR+ 8], eax
+	add		C, eax		; C = edi
+
+	mov		ebx, esi
+	shl		rsi, 32
+	or		rdx, rsi	; rdx <- esi + edi（上位 16 bits は後の計算で無視される）
+
+	shr		rbx, 16
+	shl		ecx, 16
+	or		rbx, rcx	; rbx <- rcx + (esi の下位 16bits）
+
+
+
+	mov		rcx, 0x3f3f3f3f3f3f3f3f
+	pdep	rax, rbx, rcx
+	movq	xmm1, rax
+
+	pdep	rax, rdx, rcx
+	movq	xmm0, rax
+	punpcklqdq	xmm0, xmm1			; xmm0 に 6 bits x 16 のデータが設定された
+
+	mov		eax, 51
+	vmovd	xmm1, eax
+	vpbroadcastb	xmm2, xmm1		; xmm2 : 51
+	vpsubusb	xmm5, xmm0, xmm2	; xmm5 <- 0 - 12 の値となる
+
+	mov		eax, 25
+	vmovd	xmm1, eax
+	vpbroadcastb	xmm3, xmm1		; xmm3 : 25
+	vpcmpgtb	xmm6, xmm0, xmm3	; xmm6 <- 0 - 25 のところがゼロ
+
+	mov		eax, 13
+	vmovd	xmm1, eax
+	vpbroadcastb	xmm4, xmm1		; xmm4 : 13
+	vpandn		xmm7, xmm6, xmm4	; xmm7 <- 0 - 25 のところが 13
+
+	por		xmm5, xmm7				; xmm5 =  0 - 25 -> 13
+									;        25 - 51 -> 0
+									;        52 - 63 -> 1 - 12
+	movdqa	xmm8, [DQ_PSHUFB_base64]	; xmm8 : DQ_PSHUFB_base64
+	vpshufb	xmm1, xmm8, xmm5
+	paddb	xmm0, xmm1				; xmm0 <- base64 encoded
+
+
+
+;	movdqa	[HASH_PTR], xmm0
+
+
+
+
 
 	pop		rax
 	add		eax, D
-	mov		[HASH_PTR+12], eax
+;	mov		[HASH_PTR+12], eax
 
 	pop		rax
 	add		eax, E
-	mov		[HASH_PTR+16], eax
+;	mov		[HASH_PTR+16], eax
 
 	pop		rbp
 	pop		rbx
