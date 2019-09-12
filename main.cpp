@@ -5,15 +5,23 @@
 #include <sstream>
 
 // 24文字 ＋ 36文字（vmovdqa を利用するため、32バイトアライメントが必要）
-static char __attribute__ ((aligned (32))) sa_WS_Key[64]
+//static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
+//	= "dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+	//	b3 7a 4f 2c  c0 62 4f 16  90 f6 46 06  cf 38 59 45  b2 be c4 ea
+
+//static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
+//	= "E4WSEcseoWr4csPLS2QJHA==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+	// ed e4 02 86  00 ad 40 c9  d5 20 b7 9f  24 03 ba 74  ae 49 c0 f7 
+
+static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
 	= "zYuFKiL/3y3UA63cCi8V6g==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-//static char  sa_SB_WS_Key[] = "E4WSEcseoWr4csPLS2QJHA==";
+	// 7f 8b ce b1  ca 9f ab b2  fa ab 7a f2  79 89 4a 73  db f6 98 e5
 
-//extern "C" uint64_t sha1_update_intel(uint32_t* o_pHash, const char* i_pBuffer);
-extern "C" void  sha1_update_intel(uint32_t* o_pHash, const char* i_pBuffer, uint8_t* o_pW_asm);
 
-//extern "C" void  sha1_init_once();
-extern "C" void  sha1_init_once(uint32_t* o_pHash, uint8_t* o_pW_asm);
+extern "C" void sha1_update_intel(uint32_t* o_pHash, const char* i_pbuf_to24chr);
+//extern "C" void  sha1_update_intel(uint32_t* o_pHash, const char* i_pBuffer, uint8_t* o_pW_asm);
+
+extern "C" void  sha1_init_once();
 
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -127,25 +135,17 @@ int main()
 	uint8_t __attribute__ ((aligned (32))) W_asm[320];
 	memset(W_asm, 0, sizeof(W_asm));
 
-	uint8_t  block_2nd[64];
-	memset(block_2nd, 0, sizeof(block_2nd));
-	block_2nd[62] = 0x01;
-	block_2nd[63] = 0xe0;
-
-//	block_2nd[0] = 0x30;
-//	block_2nd[1] = 0x80;
-//	block_2nd[63] = 8;
-
 // ====================
 // テストコード
 
 	// 80 00 00 00 を書き込み
-	*(uint32_t*)(sa_WS_Key + 60) = 0x80;
+	*(uint32_t*)(sa_WS_Key_24chr + 60) = 0x80;
 
 	// ----------------------------------------
 	// アセンブラルーチン呼び出し
-	sha1_init_once(hash, W_asm);
-	sha1_update_intel(hash, (char*)block_2nd, W_asm);
+	sha1_init_once();
+//	sha1_update_intel(hash, (char*)sa_WS_Key, W_asm);
+	sha1_update_intel(hash, sa_WS_Key_24chr);
 
 
 	// ----------------------------------------
@@ -157,13 +157,16 @@ int main()
 
 	// ----------------------------------------
 	// W_asm[80] のダンプ
+#if false
 	{
 		const uint8_t*  psrc = *(uint8_t**)W_asm;
 		uint8_t*  pdst = (uint8_t*)W_asm;
 		for (int i = 0; i < 320; ++i)
 		{ *pdst++ = *psrc++; }
 	}
+#endif
 
+#if false
 	{
 		std::cout << std::endl;
 		std::cout << "W_asm[80] ダンプ" << std::endl;
@@ -176,16 +179,19 @@ int main()
 		}
 	}
 	std::cout << std::endl;
+#endif
 	// ----------------------------------------
 
 
-
+#if false	// SHA1 C++ による算出
 	// ----------------------------------------
 	// W[80] の生成
 	uint32_t  W[80];
-//	uint8_t*  psrc_ui8 = (uint8_t*)sa_WS_Key;
-	uint8_t*  psrc_ui8 = block_2nd;
+	uint8_t*  psrc_ui8 = (uint8_t*)sa_WS_Key_24chr;
+//	uint8_t*  psrc_ui8 = block_2nd;
 	int  w_idx = 0;
+
+	// W[0] - W[15] の生成
 	for (int i = 0; i < 16; ++i)
 	{
 		const uint8_t a = *psrc_ui8++;
@@ -197,6 +203,7 @@ int main()
 		w_idx++;
 	}
 
+	// W[16] - W[79] の生成
 	for (int t = 16; t < 80; ++t)
 	{
 		const uint32_t  preW = W[t-3] ^ W[t-8] ^ W[t-14] ^ W[t-16];
@@ -321,6 +328,7 @@ int main()
 		else
 		{ std::cout << "W[] != W_asm[] -> fail..\n" << std::endl; }
 	}
+#endif		// SHA1 C++ による算出
 
     return  0;
 }
