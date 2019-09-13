@@ -22,8 +22,8 @@ global  sha1_update_intel
 %xdefine  E_64	rdx
 
 %xdefine  FLG_2nd_BLK  r8		; =0 -> 1st loop, =1 -> 2nd loop
-%xdefine  HASH_PTR  r9
-%xdefine  BUFFER_PTR  r10
+%xdefine  REG_pBase64  r9
+%xdefine  REG_p64chr_SHA1  r10
 %xdefine  ADD_DEPO_W_TMP  r11d
 
 %xdefine  W_TMP  xmm0
@@ -126,7 +126,7 @@ global  sha1_update_intel
 
 ; -----------------------------------------
 %macro W_PRECALC_00_15  1
-	movdqu	W, [BUFFER_PTR + %1]
+	movdqu	W, [REG_p64chr_SHA1 + %1]
 	pshufb	W, XMM_SHUFB_BSWAP
 
 	movdqa  W_TMP, W
@@ -280,7 +280,7 @@ bswap_shufb_ctl:		; 16bytes
 DB_WS_KEY_BUF:			; 64bytes
 	DB "1234567890123456789012==258EAFA5-E914-47DA-95CA-C5AB0DC85B11", 0x80, 0, 0, 0
 
-DQ_PSHUFB_base64:		; 16bytes
+DDQ_PSHUFB_base64:		; 16bytes
 	DB  'a'-26, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52
 	DB  '0'-52, '0'-52, '0'-52, '+'-62, '/'-63, 'A', 0, 0
 
@@ -308,8 +308,8 @@ sha1_init_once:			; ----- コード開始位置
 	mov		ax, 0xe001
 	mov		[WK_VAL_BLK2 + 62], ax	; 480 bits のデータがあることを書き込む
 
-	mov		HASH_PTR, HASH_PTR		; HASH_PTR == NULL が sha1_init_once の目印
-	mov		BUFFER_PTR, WK_VAL_BLK2;
+	mov		REG_pBase64, REG_pBase64		; REG_pBase64 == NULL が sha1_init_once の目印
+	mov		REG_p64chr_SHA1, WK_VAL_BLK2;
 
 	jmp		POS_CRT_WK_VAL
 
@@ -354,24 +354,19 @@ sha1_update_intel:		; ----- コード開始位置
 	push	rbx
 	push	rbp
 
-	mov     HASH_PTR, rdi		; 第１引数（hash）, 方向：out
-;	mov     BUFFER_PTR, rsi		; 第２引数（buffer）, 方向：in
-
-
-;--------------------------------------------
-; 処理開始
+	mov     REG_pBase64, rdi				; 第１引数（hash）, 方向：out
 
 	; 24 文字の WS-Key を DB_WS_KEY_BUF に転送
-	movdqa		xmm0, [rsi]					; rsi 第２引数
-	movdqa		[DB_WS_KEY_BUF], xmm0
-	mov			rax, [rsi + 16]
-	mov			[DB_WS_KEY_BUF + 16], rax
+	movdqa	xmm0, [rsi]						; rsi 第２引数
+	movdqa	[DB_WS_KEY_BUF], xmm0
+	mov		rax, [rsi + 16]
+	mov		[DB_WS_KEY_BUF + 16], rax
 
-	xor			FLG_2nd_BLK, FLG_2nd_BLK	; FLG_2nd_BLK フラグのクリア
+	xor		FLG_2nd_BLK, FLG_2nd_BLK		; FLG_2nd_BLK フラグのクリア
 
 
 	; 1st block の WK値を生成
-	mov			BUFFER_PTR, DB_WS_KEY_BUF	; BUFFER_PTR を設定
+	mov		REG_p64chr_SHA1, DB_WS_KEY_BUF	; REG_p64chr_SHA1 を設定
 
 POS_CRT_WK_VAL:
 	movdqa  XMM_SHUFB_BSWAP, [bswap_shufb_ctl]
@@ -420,7 +415,7 @@ POS_CRT_WK_VAL:
 	%endrep
 
 	; sha1_init_once の判定
-	or		HASH_PTR, HASH_PTR
+	or		REG_pBase64, REG_pBase64
 	jz		POS_RESTORE_init_once
 
 
@@ -550,31 +545,33 @@ POS_FINISH_2nd_BLK:
 	pop		rax
 	add		A, eax		; A = ecx
 
-	mov		[HASH_PTR], A
-
 	pop		rax
 	add		B, eax		; B = esi
 
 	pop		rax
 	add		C, eax		; C = edi
 
-	mov		ebx, esi
-	shl		rsi, 32
-	or		rdx, rsi	; rdx <- esi + edi（上位 16 bits は後の計算で無視される）
-
+	shl		rcx, 16
+	mov		rbx, rsi
 	shr		rbx, 16
-	shl		ecx, 16
-	or		rbx, rcx	; rbx <- rcx + (esi の下位 16bits）
+	or		rbx, rcx	; rbx <- A + B の 2bytes
+
+	shl		rsi, 32
+	or		rdi, rsi	; rdi <- B の 2bytes + C
 
 
+	; xmm0 : base64 エンコード値
+	; xmm1, xmm5 - xmm7 : ワーク用
+	; xmm2 - xmm4, xmm8 : 固定値保存用
 
 	mov		rcx, 0x3f3f3f3f3f3f3f3f
 	pdep	rax, rbx, rcx
 	movq	xmm1, rax
 
-	pdep	rax, rdx, rcx
+	pdep	rax, rdi, rcx
 	movq	xmm0, rax
 	punpcklqdq	xmm0, xmm1			; xmm0 に 6 bits x 16 のデータが設定された
+
 
 	mov		eax, 51
 	vmovd	xmm1, eax
@@ -594,25 +591,24 @@ POS_FINISH_2nd_BLK:
 	por		xmm5, xmm7				; xmm5 =  0 - 25 -> 13
 									;        25 - 51 -> 0
 									;        52 - 63 -> 1 - 12
-	movdqa	xmm8, [DQ_PSHUFB_base64]	; xmm8 : DQ_PSHUFB_base64
+
+	movdqa	xmm8, [DDQ_PSHUFB_base64]	; xmm8 : DDQ_PSHUFB_base64
 	vpshufb	xmm1, xmm8, xmm5
 	paddb	xmm0, xmm1				; xmm0 <- base64 encoded
 
 
 
-;	movdqa	[HASH_PTR], xmm0
-
-
+	movdqa	[REG_pBase64], xmm0
 
 
 
 	pop		rax
 	add		eax, D
-;	mov		[HASH_PTR+12], eax
+;	mov		[REG_pBase64+12], eax
 
 	pop		rax
 	add		eax, E
-;	mov		[HASH_PTR+16], eax
+;	mov		[REG_pBase64+16], eax
 
 	pop		rbp
 	pop		rbx
