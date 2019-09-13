@@ -274,15 +274,19 @@ K_XMM_ARY:				; 64 bytes
 	DD K3, K3, K3, K3
 	DD K4, K4, K4, K4
 
-bswap_shufb_ctl:		; 16bytes
+bswap_shufb_ctl:		; 16 bytes
 	DD 0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f
 
-DB_WS_KEY_BUF:			; 64bytes
+DB_WS_KEY_BUF:			; 64 bytes
 	DB "1234567890123456789012==258EAFA5-E914-47DA-95CA-C5AB0DC85B11", 0x80, 0, 0, 0
 
-DDQ_PSHUFB_base64:		; 16bytes
+DDQ_PSHUFB_base64:		; 16 bytes
 	DB  'a'-26, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52, '0'-52
 	DB  '0'-52, '0'-52, '0'-52, '+'-62, '/'-63, 'A', 0, 0
+
+DDQ_PSHUFB_BSwapAll:		; 16 bytes
+	DQ  0x08090a0b0c0d0e0f
+	DQ  0x0001020304050607
 
 
 ; ========================================================
@@ -542,28 +546,29 @@ POS_RR_START:
 POS_FINISH_2nd_BLK:
 ; -----------------------------------------
 ; ハッシュ値 20 bytes を base64 エンコードする
-	pop		rax
-	add		A, eax		; A = ecx
+	pop		rbx
+	add		ebx, A		; A = ecx
+	shl		rbx, 16
 
 	pop		rax
-	add		B, eax		; B = esi
+	add		eax, B		; B = esi
+	mov		ecx, eax
+	shr		rcx, 16
+	or		rbx, rcx	; rbx <- A + (B の 2bytes)
 
-	pop		rax
-	add		C, eax		; C = edi
-
-	shl		rcx, 16
-	mov		rbx, rsi
-	shr		rbx, 16
-	or		rbx, rcx	; rbx <- A + B の 2bytes
-
-	shl		rsi, 32
-	or		rdi, rsi	; rdi <- B の 2bytes + C
+	pop		rcx
+	add		C, ecx		; C = edi
+	shl		rax, 32
+	or		rdi, rax	; rdi <- (B の 2bytes) + C
 
 
+	; ----------------------------------------
 	; xmm0 : base64 エンコード値
 	; xmm1, xmm5 - xmm7 : ワーク用
-	; xmm2 - xmm4, xmm8 : 固定値保存用
+	; xmm2 - xmm4, xmm8, xmm9 : 固定値保存用
+	; ----------------------------------------
 
+	; A, B, C の base64 エンコーディング
 	mov		rcx, 0x3f3f3f3f3f3f3f3f
 	pdep	rax, rbx, rcx
 	movq	xmm1, rax
@@ -596,19 +601,48 @@ POS_FINISH_2nd_BLK:
 	vpshufb	xmm1, xmm8, xmm5
 	paddb	xmm0, xmm1				; xmm0 <- base64 encoded
 
+	movdqa	xmm9, [DDQ_PSHUFB_BSwapAll]
+	pshufb	xmm0, xmm9				; byte swap
 
 
+	;;; テスト用
 	movdqa	[REG_pBase64], xmm0
 
 
+	; ----------------------------------------
+	; D, E の base64 エンコーディング
+	pop		rbx
+	add		ebx, D		; D = ebp
 
 	pop		rax
-	add		eax, D
-;	mov		[REG_pBase64+12], eax
+	add		eax, E		; E = edx
+	mov		edi, eax
+	shl		rdi, 32		; rdi <- E の 2bytes
 
-	pop		rax
-	add		eax, E
-;	mov		[REG_pBase64+16], eax
+	shl		rbx, 16
+	shr		eax, 16
+	or		rbx, rax	; rbx <- D + (E の 2bytes)
+
+	pdep	rax, rbx, rcx
+	movq	xmm1, rax
+
+	pdep	rax, rdi, rcx
+	movq	xmm0, rax
+	punpcklqdq	xmm0, xmm1			; xmm0 に 6 bits x 16 のデータが設定された
+
+	vpsubusb	xmm5, xmm0, xmm2	; xmm5 <- 0 - 12 の値となる
+	vpcmpgtb	xmm6, xmm0, xmm3	; xmm6 <- 0 - 25 のところがゼロ
+	vpandn		xmm7, xmm6, xmm4	; xmm7 <- 0 - 25 のところが 13
+
+	por			xmm5, xmm7
+	vpshufb		xmm1, xmm8, xmm5
+	paddb		xmm0, xmm1			; xmm0 <- base64 encoded
+	pshufb		xmm0, xmm9			; byte swap
+
+
+		;;; テスト用
+	movdqa	[REG_pBase64 + 16], xmm0
+
 
 	pop		rbp
 	pop		rbx
