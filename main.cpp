@@ -5,8 +5,8 @@
 #include <sstream>
 
 // 24文字 ＋ 36文字（vmovdqa を利用するため、32バイトアライメントが必要）
-// static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
-//	= "dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+ static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
+	= "dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	//	b3 7a 4f 2c  c0 62 4f 16  90 f6 46 06  cf 38 59 45  b2 be c4 ea
 	// s3pP LMBi TxaQ 9kYG zzhZ RbK+ xOo=
 
@@ -15,13 +15,13 @@
 	// ed e4 02 86  00 ad 40 c9  d5 20 b7 9f  24 03 ba 74  ae 49 c0 f7 
 	// 7eQC hgCt QMnV ILef JAO6 dK5J wPc=
 
-static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
-	= "zYuFKiL/3y3UA63cCi8V6g==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+//static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
+//	= "zYuFKiL/3y3UA63cCi8V6g==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	// 7f 8b ce b1  ca 9f ab b2  fa ab 7a f2  79 89 4a 73  db f6 98 e5
 	// f4vO scqf q7L6 q3ry eYlK c9v2 mOU=
 
 
-extern "C" void sha1_update_intel(uint8_t* o_pbase64, const char* i_pbuf_to24chr);
+extern "C" void sha1_update_intel(uint8_t* o_pbase64, uint64_t key24chr_1, uint64_t key24chr_2, uint64_t key24chr_3);
 //extern "C" void  sha1_update_intel(uint32_t* o_pHash, const char* i_pBuffer, uint8_t* o_pW_asm);
 
 extern "C" void  sha1_init_once();
@@ -122,17 +122,18 @@ void  G_out_ui8_32chr(const char* psrc)
 
 int main()
 {
-    uint8_t __attribute__ ((aligned (16))) base64[32];
+//	uint8_t __attribute__ ((aligned (16))) base64[32];
+	uint8_t base64[32];
 	memset(base64, 0, sizeof(base64));
-
-	// アセンブラ内での W情報
-	uint8_t __attribute__ ((aligned (32))) W_asm[320];
-	memset(W_asm, 0, sizeof(W_asm));
 
 	// ----------------------------------------
 	// アセンブラルーチン呼び出し
 	sha1_init_once();
-	sha1_update_intel(base64, sa_WS_Key_24chr);
+
+	uint64_t  key24chr_1 = *(uint64_t*)sa_WS_Key_24chr;
+	uint64_t  key24chr_2 = *(uint64_t*)(sa_WS_Key_24chr + 8);
+	uint64_t  key24chr_3 = *(uint64_t*)(sa_WS_Key_24chr + 16);
+	sha1_update_intel(base64, key24chr_1, key24chr_2, key24chr_3);
 
 
 	// ----------------------------------------

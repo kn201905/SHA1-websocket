@@ -361,17 +361,15 @@ sha1_update_intel:		; ----- コード開始位置
 	mov     REG_pBase64, rdi				; 第１引数（hash）, 方向：out
 
 	; 24 文字の WS-Key を DB_WS_KEY_BUF に転送
-	movdqa	xmm0, [rsi]						; rsi 第２引数
-	movdqa	[DB_WS_KEY_BUF], xmm0
-	mov		rax, [rsi + 16]
-	mov		[DB_WS_KEY_BUF + 16], rax
+	mov		[DB_WS_KEY_BUF], rsi			; rsi 第２引数
+	mov		[DB_WS_KEY_BUF + 8], rdx		; rdx 第３引数
+	mov		[DB_WS_KEY_BUF + 16], rcx		; rcx 第４引数
+	mov		REG_p64chr_SHA1, DB_WS_KEY_BUF	; REG_p64chr_SHA1 を設定
 
 	xor		FLG_2nd_BLK, FLG_2nd_BLK		; FLG_2nd_BLK フラグのクリア
 
 
 	; 1st block の WK値を生成
-	mov		REG_p64chr_SHA1, DB_WS_KEY_BUF	; REG_p64chr_SHA1 を設定
-
 POS_CRT_WK_VAL:
 	movdqa  XMM_SHUFB_BSWAP, [bswap_shufb_ctl]
 
@@ -604,9 +602,8 @@ POS_FINISH_2nd_BLK:
 	movdqa	xmm9, [DDQ_PSHUFB_BSwapAll]
 	pshufb	xmm0, xmm9				; byte swap
 
-
-	;;; テスト用
-	movdqa	[REG_pBase64], xmm0
+	; １番目の 16文字のストア
+	movdqu	[REG_pBase64], xmm0
 
 
 	; ----------------------------------------
@@ -637,12 +634,16 @@ POS_FINISH_2nd_BLK:
 	por			xmm5, xmm7
 	vpshufb		xmm1, xmm8, xmm5
 	paddb		xmm0, xmm1			; xmm0 <- base64 encoded
+
+	; xmm0 の下位５バイトを書き換え
 	pshufb		xmm0, xmm9			; byte swap
 
+	; ２番目の 16文字のストア
+	movdqu	[REG_pBase64 + 16], xmm0
 
-		;;; テスト用
-	movdqa	[REG_pBase64 + 16], xmm0
-
+	; 最後の５文字を書き換え
+	mov byte	[REG_pBase64 + 27], 0x3d
+	mov dword	[REG_pBase64 + 28], 0x0a0d0a0d;
 
 	pop		rbp
 	pop		rbx
