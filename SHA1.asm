@@ -312,7 +312,7 @@ sha1_init_once:			; ----- コード開始位置
 	mov		ax, 0xe001
 	mov		[WK_VAL_BLK2 + 62], ax	; 480 bits のデータがあることを書き込む
 
-	mov		REG_pBase64, REG_pBase64		; REG_pBase64 == NULL が sha1_init_once の目印
+	xor		REG_pBase64, REG_pBase64		; REG_pBase64 == NULL が sha1_init_once の目印
 	mov		REG_p64chr_SHA1, WK_VAL_BLK2;
 
 	jmp		POS_CRT_WK_VAL

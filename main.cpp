@@ -5,7 +5,7 @@
 #include <sstream>
 
 // 24文字 ＋ 36文字（vmovdqa を利用するため、32バイトアライメントが必要）
- static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
+static char __attribute__ ((aligned (32))) sa_WS_Key_24chr[64]
 	= "dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 	//	b3 7a 4f 2c  c0 62 4f 16  90 f6 46 06  cf 38 59 45  b2 be c4 ea
 	// s3pP LMBi TxaQ 9kYG zzhZ RbK+ xOo=
